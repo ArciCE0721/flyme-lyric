@@ -1,0 +1,10 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Base.Theme.FlymeLyricTest" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/am_red</item>
+        <item name="colorOnPrimary">@android:color/white</item>
+        <item name="colorPrimaryContainer">@color/am_red</item>
+        <item name="colorOnPrimaryContainer">@android:color/white</item>
+    </style>
+
+    <style name="Theme.FlymeLyricTest" parent="Base.Theme.FlymeLyricTest" />
+</resources>

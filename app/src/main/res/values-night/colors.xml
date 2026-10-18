@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 液态玻璃卡片：深色主题 -->
+    <color name="glass_bg">#1FFFFFFF</color>
+    <color name="glass_stroke">#2EFFFFFF</color>
+    <color name="glass_scrim">#59000000</color>
+</resources>
