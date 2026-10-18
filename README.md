@@ -5,7 +5,7 @@
 ## 功能
 
 - 读取 Apple Music 的播放状态（MediaSession），把当前歌词推送到 Flyme 状态栏
-- 歌词源三级兜底：**AMLL**（按 Apple Music ID）→ **LRCLIB** → **网易云音乐**
+- 自动匹配最佳歌词版本，避免翻唱 / 现场版错配
 - 状态栏歌词前可显示 Apple Music 音符图标（可在界面开关）
 - 界面为液态玻璃风格：专辑封面模糊背景 + 缓慢流动的光晕动效
 - 功耗优化：播放时 700ms 轮询，空闲时退避到 5s，无唤醒锁
@@ -58,8 +58,8 @@ cd FlymeLyricTest
 app/src/main/java/com/flymelyric/app/
 ├── MainActivity.java          # 主界面（玻璃卡片、封面模糊、动效）
 ├── LyricListenerService.java  # 通知监听 + 状态栏歌词推送
-├── LyricsFetcher.java         # 歌词获取（AMLL / LRCLIB / 网易云）
-├── Ttml.java                  # TTML 解析（AMLL）
+├── LyricsFetcher.java         # 歌词获取与匹配
+├── Ttml.java                  # TTML 解析
 ├── Lrc.java                   # LRC 解析
 ├── LyricDoc.java              # 歌词接口
 ├── AuroraView.java            # 背景光晕动效
