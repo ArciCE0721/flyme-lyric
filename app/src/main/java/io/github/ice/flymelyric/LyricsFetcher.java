@@ -27,7 +27,7 @@ public final class LyricsFetcher {
     private static final String TAG = "LyricBridge";
     private static final String UA = "Mozilla/5.0 (Linux; Android 16) FlymeLyric/1.0";
     /** 缓存前缀带版本号：匹配逻辑变化后旧缓存自动失效 */
-    private static final String CACHE_PREFIX = "v6_";
+    private static final String CACHE_PREFIX = "v8_";
 
     private LyricsFetcher() {}
 
@@ -43,6 +43,22 @@ public final class LyricsFetcher {
         String src = "amll";
         if (!usable(lrc)) { lrc = fromLrclib(title, artist, dur); src = "lrclib"; }
         if (!usable(lrc)) { lrc = fromNetease(title, artist, dur); src = "netease"; }
+
+        // 跨语言曲名兜底：Apple Music 常把日文歌名显示成英文（プラチナ -> Platinum），
+        // 用 Apple ID 反查日本区元数据，拿到原名再搜一次。
+        if (!usable(lrc) && appleId != null && !appleId.isEmpty()) {
+            String[] loc = localizedMeta(appleId);
+            if (loc != null && !loc[0].isEmpty()
+                    && (!norm(loc[0]).equals(norm(title)) || !norm(loc[1]).equals(norm(artist)))) {
+                long d2 = parseLong(loc[2], dur);
+                Log.i(TAG, "retry with localized name: " + loc[0] + " / " + loc[1]);
+                lrc = fromAmll(loc[0], loc[1], null);
+                if (!usable(lrc)) lrc = fromLrclib(loc[0], loc[1], d2);
+                if (!usable(lrc)) lrc = fromNetease(loc[0], loc[1], d2);
+                if (usable(lrc)) src = "localized";
+            }
+        }
+
         if (!usable(lrc)) lrc = null;
         if (lrc != null) sp.edit().putString(key, lrc).apply();
         Log.i(TAG, "fetch [" + title + " / " + artist + "] -> "
@@ -69,6 +85,27 @@ public final class LyricsFetcher {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    /** 用 Apple ID 反查日本区元数据（歌词库里通常用日文原名）。返回 {曲名, 歌手, 时长ms} */
+    private static String[] localizedMeta(String appleId) {
+        try {
+            JSONObject o = json("https://itunes.apple.com/lookup?id=" + enc(appleId) + "&country=jp");
+            if (o == null || o.optInt("resultCount") <= 0) return null;
+            JSONArray arr = o.optJSONArray("results");
+            if (arr == null || arr.length() == 0) return null;
+            JSONObject r = arr.optJSONObject(0);
+            if (r == null) return null;
+            return new String[]{ r.optString("trackName", ""), r.optString("artistName", ""),
+                    String.valueOf(r.optLong("trackTimeMillis", 0)) };
+        } catch (Exception e) {
+            Log.w(TAG, "lookup " + e);
+            return null;
+        }
+    }
+
+    private static long parseLong(String s, long fallback) {
+        try { return Long.parseLong(s); } catch (Exception e) { return fallback; }
     }
 
     /* ---------------- AMLL ---------------- */
@@ -304,7 +341,7 @@ public final class LyricsFetcher {
                 .replaceAll("\\([^)]*\\)", "")
                 .replaceAll("（[^）]*）", "")
                 .replaceAll("\\[[^\\]]*\\]", "")
-                .replaceAll("[\\s_\\-·,，.。'\"!！?？]", "");
+                .replaceAll("[\\s_\\-·,，.。'\"!！?？:：;；、<>《》「」『』“”‘’—–~～]", "");
     }
 
     /* ---------------- HTTP ---------------- */
