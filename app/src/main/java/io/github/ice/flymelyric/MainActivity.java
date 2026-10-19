@@ -10,6 +10,7 @@ import android.graphics.RenderEffect;
 import android.graphics.Shader;
 import android.view.animation.LinearInterpolator;
 import android.os.Build;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -31,7 +32,8 @@ import androidx.appcompat.app.AppCompatActivity;
 public class MainActivity extends AppCompatActivity {
 
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private TextView tvSong, tvLine, tvStatus;
+    private TextView tvSong, tvLine, tvStatus, tvVersion;
+    private static final String RELEASES_URL = "https://github.com/ArciCE0721/flyme-lyric/releases/latest";
     private ImageView bgImage;
     private MaterialSwitch swIcon;
     private AuroraView aurora;
@@ -65,6 +67,11 @@ public class MainActivity extends AppCompatActivity {
         tvSong = findViewById(R.id.tvSong);
         tvLine = findViewById(R.id.tvLine);
         tvStatus = findViewById(R.id.tvStatus);
+        tvVersion = findViewById(R.id.tvVersion);
+        final String curVer = versionName();
+        tvVersion.setText("v" + curVer + " · 检查更新");
+        tvVersion.setOnClickListener(v -> checkUpdate(false));
+        checkUpdate(true);
         bgImage = findViewById(R.id.bgImage);
         findViewById(R.id.cardLyric).setOnLongClickListener(v -> {
             State.reloadRequested = true;
@@ -86,6 +93,103 @@ public class MainActivity extends AppCompatActivity {
                 } catch (Exception ignored) { }
             }
         });
+    }
+
+
+    private String versionName() {
+        try {
+            return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (Exception e) {
+            return "1.0";
+        }
+    }
+
+    /** 静默检查更新：拉 GitHub 最新 Release，比较版本号。 */
+    private void checkUpdate(final boolean silent) {
+        new Thread(new Runnable() {
+            @Override public void run() {
+                // 主：GitHub API（实时）；失败（常见原因是共享 IP 被限流 403）回退 jsdelivr 的 version.json
+                String tag = fetchField(
+                        "https://api.github.com/repos/ArciCE0721/flyme-lyric/releases/latest", "tag_name");
+                if (tag == null || tag.isEmpty()) {
+                    tag = fetchField(
+                            "https://cdn.jsdelivr.net/gh/ArciCE0721/flyme-lyric@main/version.json", "version");
+                    if (tag != null && !tag.isEmpty()) tag = "v" + tag;
+                }
+                final String latest = tag;
+                runOnUiThread(new Runnable() {
+                    @Override public void run() {
+                        if (latest == null || latest.isEmpty()) {
+                            if (!silent) Toast.makeText(MainActivity.this,
+                                    "检查更新失败，请检查网络", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        if (isNewer(latest, versionName())) {
+                            tvVersion.setText("发现新版本 " + latest + " · 点击更新");
+                            if (!silent) showUpdateDialog(latest);
+                        } else if (!silent) {
+                            Toast.makeText(MainActivity.this, "已是最新版本", Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                });
+            }
+        }).start();
+    }
+
+
+    /** 拉一个 JSON 接口并取指定字段，失败返回 null。 */
+    private static String fetchField(String url, String field) {
+        java.net.HttpURLConnection c = null;
+        try {
+            c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+            c.setRequestProperty("User-Agent", "FlymeLyric");
+            c.setRequestProperty("Accept", "application/json");
+            c.setConnectTimeout(6000);
+            c.setReadTimeout(6000);
+            if (c.getResponseCode() != 200) return null;
+            java.io.InputStream in = c.getInputStream();
+            java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[4096];
+            int n;
+            while ((n = in.read(buf)) > 0) bos.write(buf, 0, n);
+            in.close();
+            return new org.json.JSONObject(bos.toString("UTF-8")).optString(field, "");
+        } catch (Exception e) {
+            return null;
+        } finally {
+            if (c != null) c.disconnect();
+        }
+    }
+
+    private void showUpdateDialog(final String tag) {
+        new androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("发现新版本 " + tag)
+                .setMessage("是否前往 GitHub 下载？")
+                .setPositiveButton("去下载", (d, w) -> {
+                    try {
+                        startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(RELEASES_URL)));
+                    } catch (Exception ignored) { }
+                })
+                .setNegativeButton("稍后", null)
+                .show();
+    }
+
+    private static boolean isNewer(String tag, String current) {
+        int[] a = parseVer(tag), b = parseVer(current);
+        for (int i = 0; i < Math.max(a.length, b.length); i++) {
+            int x = i < a.length ? a[i] : 0, y = i < b.length ? b[i] : 0;
+            if (x != y) return x > y;
+        }
+        return false;
+    }
+
+    private static int[] parseVer(String s) {
+        String[] p = (s == null ? "" : s.replaceAll("[^0-9.]", "")).split("\\.");
+        int[] r = new int[p.length];
+        for (int i = 0; i < p.length; i++) {
+            try { r[i] = Integer.parseInt(p[i]); } catch (Exception e) { r[i] = 0; }
+        }
+        return r;
     }
 
     private void updateAuroraColors() {

@@ -40,6 +40,7 @@ public class LyricListenerService extends NotificationListenerService {
     private String lastLine = "";
     private long lastPostAt = 0;
     private boolean fetching = false;
+    private String fetchingKey = "";
     private boolean lastIconState = true;
     private Icon iconCache;
 
@@ -129,6 +130,9 @@ public class LyricListenerService extends NotificationListenerService {
             songKey = key;
             lrc = null;
             lastLine = "";
+            lastPostAt = 0;
+            // 先撤掉上一首的歌词，避免新歌还没取到时状态栏挂着旧歌词
+            cancelNotification();
             requestLyrics(title, artist, dur, appleId);
         }
 
@@ -199,18 +203,21 @@ public class LyricListenerService extends NotificationListenerService {
     }
 
     private void requestLyrics(final String title, final String artist, final long dur, final String appleId) {
-        if (fetching) return;
-        fetching = true;
         final String key = title + "|" + artist;
+        // 同一首歌已在请求中才跳过；切歌后必须允许新请求覆盖旧请求
+        if (fetching && key.equals(fetchingKey)) return;
+        fetching = true;
+        fetchingKey = key;
         new Thread(new Runnable() {
             @Override public void run() {
                 final String raw = LyricsFetcher.fetch(getApplicationContext(), title, artist, dur, appleId);
                 handler.post(new Runnable() {
                     @Override public void run() {
-                        fetching = false;
+                        if (key.equals(fetchingKey)) { fetching = false; fetchingKey = ""; }
                         if (!key.equals(songKey)) return;
                         if (raw == null) {
                             lrc = null;
+                            cancelNotification();
                         } else {
                             String t = raw.trim();
                             lrc = t.startsWith("<") ? new Ttml(raw) : new Lrc(raw);

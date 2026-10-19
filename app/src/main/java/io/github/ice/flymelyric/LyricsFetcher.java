@@ -27,7 +27,7 @@ public final class LyricsFetcher {
     private static final String TAG = "LyricBridge";
     private static final String UA = "Mozilla/5.0 (Linux; Android 16) FlymeLyric/1.0";
     /** 缓存前缀带版本号：匹配逻辑变化后旧缓存自动失效 */
-    private static final String CACHE_PREFIX = "v8_";
+    private static final String CACHE_PREFIX = "v9_";
 
     private LyricsFetcher() {}
 
@@ -108,6 +108,27 @@ public final class LyricsFetcher {
         try { return Long.parseLong(s); } catch (Exception e) { return fallback; }
     }
 
+    /** 标题是日文却拿到一堆拉丁字母的歌词，多半是别人上传的翻译版，跳掉。 */
+    private static boolean looksTranslated(String title, String lyric) {
+        if (title == null || lyric == null) return false;
+        boolean jp = false;
+        for (int i = 0; i < title.length(); i++) {
+            char c = title.charAt(i);
+            if (c >= '\u3040' && c <= '\u30ff') { jp = true; break; }
+        }
+        if (!jp) return false;
+        int kana = 0, han = 0, latin = 0;
+        for (int i = 0; i < lyric.length(); i++) {
+            char c = lyric.charAt(i);
+            if (c >= '\u3040' && c <= '\u30ff') kana++;
+            else if (c >= '\u4e00' && c <= '\u9fff') han++;
+            else if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '\u00c0' && c <= '\u024f')) latin++;
+        }
+        int total = kana + han + latin;
+        if (total < 50) return false;
+        return (double) latin / total > 0.4;
+    }
+
     /* ---------------- AMLL ---------------- */
 
     private static String fromAmll(String title, String artist, String appleId) {
@@ -173,7 +194,7 @@ public final class LyricsFetcher {
             JSONObject o = json(u);
             if (o != null) {
                 String s = o.optString("syncedLyrics", "");
-                if (!s.isEmpty()) return s;
+                if (!s.isEmpty() && !looksTranslated(title, s)) return s;
             }
         } catch (Exception e) { Log.w(TAG, "lrclib get " + e); }
         try {
@@ -197,6 +218,7 @@ public final class LyricsFetcher {
             if (o == null) continue;
             String s = o.optString("syncedLyrics", "");
             if (s.isEmpty()) continue;
+            if (looksTranslated(title, s)) continue;
             if (!looseMatch(o.optString("trackName"), title)) continue;
             java.util.List<String> one = new java.util.ArrayList<>();
             one.add(o.optString("artistName", ""));
@@ -271,6 +293,10 @@ public final class LyricsFetcher {
             if (lrc == null) return null;
             String s = lrc.optString("lyric", "");
             if (s.isEmpty() || !s.contains("[")) return null;
+            if (looksTranslated(title, s)) {
+                Log.i(TAG, "netease skip translated lyric id=" + bestId);
+                return null;
+            }
             Log.i(TAG, "netease pick id=" + bestId + " score=" + bestScore);
             return s;
         } catch (Exception e) {
