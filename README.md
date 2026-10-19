@@ -36,9 +36,8 @@ extras.putBoolean("ticker_icon_switch", true);
 ## 编译
 
 ```bash
-git clone <this-repo>
-cd FlymeLyricTest
-# FlymeLyric
+git clone https://github.com/ArciCE0721/flyme-lyric.git
+cd flyme-lyric
 ./gradlew assembleDebug
 ```
 
@@ -51,6 +50,23 @@ cd FlymeLyricTest
 3. 允许通知权限
 4. 在 Flyme 的「手机管家」里把本应用加入自启动 / 后台运行白名单
 5. 打开 Apple Music 播放歌曲
+
+## 发布新版本
+
+检查更新读取的是仓库根目录的 `version.json`，**发版时必须同步修改**，否则用户收不到更新提示。
+
+1. 改 `app/build.gradle.kts`：`versionCode` +1，`versionName` 改成新版本号
+2. 改根目录 `version.json` 的 `version`，与 `versionName` 保持一致
+3. 构建：
+
+   ```bash
+   ./gradlew assembleDebug
+   ```
+
+4. 提交并推送
+5. 在 GitHub 建同版本号的 Release，上传 `app/build/outputs/apk/debug/app-debug.apk`
+
+> `version.json` 通过 jsDelivr 分发，推送后可能有几分钟缓存延迟，属正常现象。
 
 ## 项目结构
 
