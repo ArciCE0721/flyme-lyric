@@ -12,8 +12,8 @@ android {
         applicationId = "io.github.ice.flymelyric"
         minSdk = 28
         targetSdk = 37
-        versionCode = 3
-        versionName = "1.2"
+        versionCode = 4
+        versionName = "1.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

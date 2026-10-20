@@ -27,7 +27,7 @@ public final class LyricsFetcher {
     private static final String TAG = "LyricBridge";
     private static final String UA = "Mozilla/5.0 (Linux; Android 16) FlymeLyric/1.0";
     /** 缓存前缀带版本号：匹配逻辑变化后旧缓存自动失效 */
-    private static final String CACHE_PREFIX = "v9_";
+    private static final String CACHE_PREFIX = "v10_";
 
     private LyricsFetcher() {}
 
@@ -108,7 +108,7 @@ public final class LyricsFetcher {
         try { return Long.parseLong(s); } catch (Exception e) { return fallback; }
     }
 
-    /** 标题是日文却拿到一堆拉丁字母的歌词，多半是别人上传的翻译版，跳掉。 */
+    /** 日文歌却拿到翻译版歌词（越南语/英文用户上传）时跳掉；日英混唱的原文要放行。 */
     private static boolean looksTranslated(String title, String lyric) {
         if (title == null || lyric == null) return false;
         boolean jp = false;
@@ -117,16 +117,26 @@ public final class LyricsFetcher {
             if (c >= '\u3040' && c <= '\u30ff') { jp = true; break; }
         }
         if (!jp) return false;
-        int kana = 0, han = 0, latin = 0;
+
+        int kana = 0, latin = 0, viet = 0;
         for (int i = 0; i < lyric.length(); i++) {
             char c = lyric.charAt(i);
-            if (c >= '\u3040' && c <= '\u30ff') kana++;
-            else if (c >= '\u4e00' && c <= '\u9fff') han++;
-            else if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '\u00c0' && c <= '\u024f')) latin++;
+            if (c >= '\u3040' && c <= '\u30ff') {
+                kana++;
+            } else if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
+                latin++;
+            } else if (c >= '\u1ea0' && c <= '\u1ef9' || c == '\u0111' || c == '\u0110'
+                    || c == '\u0103' || c == '\u00e2' || c == '\u00ea' || c == '\u00f4'
+                    || c == '\u01a1' || c == '\u01b0') {
+                // Latin Extended Additional + đ/ă/â/ê/ô/ơ/ư：越南语专用字符
+                viet++;
+                latin++;
+            }
         }
-        int total = kana + han + latin;
-        if (total < 50) return false;
-        return (double) latin / total > 0.4;
+        if (viet > 15) return true;
+        int total = kana + latin;
+        if (total < 100) return false;
+        return (double) latin / total > 0.85 && kana < 30;
     }
 
     /* ---------------- AMLL ---------------- */
