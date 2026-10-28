@@ -27,7 +27,7 @@ public final class LyricsFetcher {
     private static final String TAG = "LyricBridge";
     private static final String UA = "Mozilla/5.0 (Linux; Android 16) FlymeLyric/1.0";
     /** 缓存前缀带版本号：匹配逻辑变化后旧缓存自动失效 */
-    private static final String CACHE_PREFIX = "v10_";
+    private static final String CACHE_PREFIX = "v12_";
 
     private LyricsFetcher() {}
 
@@ -41,8 +41,9 @@ public final class LyricsFetcher {
         long dur = durationMs > 0 ? durationMs : 0;
         String lrc = fromAmll(title, artist, appleId);
         String src = "amll";
-        if (!usable(lrc)) { lrc = fromLrclib(title, artist, dur); src = "lrclib"; }
+        // 网易云优先：它的时间轴通常与音频严格对齐；LRCLIB 是社区上传，容易整体偏移
         if (!usable(lrc)) { lrc = fromNetease(title, artist, dur); src = "netease"; }
+        if (!usable(lrc)) { lrc = fromLrclib(title, artist, dur); src = "lrclib"; }
 
         // 跨语言曲名兜底：Apple Music 常把日文歌名显示成英文（プラチナ -> Platinum），
         // 用 Apple ID 反查日本区元数据，拿到原名再搜一次。
@@ -249,11 +250,10 @@ public final class LyricsFetcher {
 
     private static String fromNetease(String title, String artist, long durMs) {
         try {
-            long bestId = 0;
-            int bestScore = Integer.MIN_VALUE;
+            // 收集所有候选（id -> 分数），按分数排序后逐个尝试：
+            // 网易云同一首歌常有多个条目，其中可能混入无时间轴的纯文本版本
+            java.util.LinkedHashMap<Long, Integer> cand = new java.util.LinkedHashMap<>();
 
-            // 依次尝试多种查询：完整、仅歌名、歌名+歌手首段
-            // 很多日文/角色曲的艺术家字段带 (CV:xxx)，直接拼进去会搜不到
             java.util.LinkedHashSet<String> queries = new java.util.LinkedHashSet<>();
             String baseArtist = artist == null ? "" : artist.trim();
             String shortArtist = baseArtist.split("[（(、/]")[0].trim();
@@ -286,31 +286,56 @@ public final class LyricsFetcher {
                         }
                     }
                     int score = score(name, artists, sd, title, artist, durMs);
-                    if (score > bestScore) { bestScore = score; bestId = s.optLong("id", 0); }
+                    long id = s.optLong("id", 0);
+                    if (id == 0) continue;
+                    Integer old = cand.get(id);
+                    if (old == null || score > old) cand.put(id, score);
                 }
-                // 已经找到足够可信的结果就不用再试别的查询
-                if (bestScore >= 20) break;
+                if (!cand.isEmpty()) {
+                    int top = Integer.MIN_VALUE;
+                    for (int v : cand.values()) top = Math.max(top, v);
+                    if (top >= 20) break;
+                }
             }
 
-            if (bestId == 0 || bestScore < 12) {
-                Log.i(TAG, "netease no good match, bestScore=" + bestScore);
-                return null;
+            java.util.List<java.util.Map.Entry<Long, Integer>> list = new ArrayList<>(cand.entrySet());
+            list.sort((a, b) -> b.getValue() - a.getValue());
+
+            int tried = 0;
+            for (java.util.Map.Entry<Long, Integer> e : list) {
+                if (e.getValue() < 12) break;
+                if (tried++ >= 4) break;
+                long id = e.getKey();
+                String s = fetchNeteaseLyric(id);
+                if (s == null) {
+                    Log.i(TAG, "netease lyric unusable id=" + id + " score=" + e.getValue());
+                    continue;
+                }
+                if (looksTranslated(title, s)) {
+                    Log.i(TAG, "netease skip translated id=" + id);
+                    continue;
+                }
+                Log.i(TAG, "netease pick id=" + id + " score=" + e.getValue());
+                return s;
             }
-            String lu = "https://music.163.com/api/song/lyric?id=" + bestId + "&lv=-1&kv=-1&tv=-1";
-            JSONObject lo = json(lu);
+            Log.i(TAG, "netease no usable lyric, candidates=" + cand.size());
+            return null;
+        } catch (Exception e) {
+            Log.w(TAG, "netease " + e);
+            return null;
+        }
+    }
+
+    private static String fetchNeteaseLyric(long id) {
+        try {
+            JSONObject lo = json("https://music.163.com/api/song/lyric?id=" + id + "&lv=-1&kv=-1&tv=-1");
             if (lo == null) return null;
             JSONObject lrc = lo.optJSONObject("lrc");
             if (lrc == null) return null;
             String s = lrc.optString("lyric", "");
             if (s.isEmpty() || !s.contains("[")) return null;
-            if (looksTranslated(title, s)) {
-                Log.i(TAG, "netease skip translated lyric id=" + bestId);
-                return null;
-            }
-            Log.i(TAG, "netease pick id=" + bestId + " score=" + bestScore);
             return s;
         } catch (Exception e) {
-            Log.w(TAG, "netease " + e);
             return null;
         }
     }
