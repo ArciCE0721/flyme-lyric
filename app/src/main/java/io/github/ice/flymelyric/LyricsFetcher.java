@@ -27,7 +27,7 @@ public final class LyricsFetcher {
     private static final String TAG = "LyricBridge";
     private static final String UA = "Mozilla/5.0 (Linux; Android 16) FlymeLyric/1.0";
     /** 缓存前缀带版本号：匹配逻辑变化后旧缓存自动失效 */
-    private static final String CACHE_PREFIX = "v12_";
+    private static final String CACHE_PREFIX = "v14_";
 
     private LyricsFetcher() {}
 
@@ -134,10 +134,8 @@ public final class LyricsFetcher {
                 latin++;
             }
         }
-        if (viet > 15) return true;
-        int total = kana + latin;
-        if (total < 100) return false;
-        return (double) latin / total > 0.85 && kana < 30;
+        // 只认越南语专用字符：日英混唱的原文（英文副歌很常见）不能被当成翻译版
+        return viet > 15;
     }
 
     /* ---------------- AMLL ---------------- */
@@ -257,10 +255,17 @@ public final class LyricsFetcher {
             java.util.LinkedHashSet<String> queries = new java.util.LinkedHashSet<>();
             String baseArtist = artist == null ? "" : artist.trim();
             String shortArtist = baseArtist.split("[（(、/]")[0].trim();
+            // 去掉括号内容再搜：网易云对「Next 2 U -eUC- (feat. ななみ)」这种长标题
+            // 往往搜不到正片，只返回 Live/Cover
+            String cleanTitle = title.replaceAll("\\([^)]*\\)", "").replaceAll("（[^）]*）", "").trim();
             if (!baseArtist.isEmpty()) queries.add(title + " " + baseArtist);
             queries.add(title);
             if (!shortArtist.isEmpty() && !shortArtist.equals(baseArtist)) {
                 queries.add(title + " " + shortArtist);
+            }
+            if (!cleanTitle.isEmpty() && !cleanTitle.equals(title)) {
+                if (!baseArtist.isEmpty()) queries.add(cleanTitle + " " + baseArtist);
+                queries.add(cleanTitle);
             }
 
             for (String q : queries) {
